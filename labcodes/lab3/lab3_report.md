@@ -1,55 +1,10 @@
-#Lab2 Report
+#Lab3 Report
 
 ##练习1
 ---
-1.实现 first-fit 连续物理内存分配算法的设计思路
+1.给未被映射的地址映射上物理页设计思路
 
->	由于之前做spoc练习的时候写过一题first-fit内存分配算法，所以这次直接照搬上次写算法时的思路，简要说明下设计思路：分配时直接从链表头开始遍历到内存空间大于所需空间的第一个内存块，分配内存将其从链表中删除，如果内存块的大小大于所需空间则将剩余空间分割出新的内存块加入链表；回收时直接修改内存块标记，再将其加入到链表原位置，然后搜索其前后的内存块是否空闲，若空闲则合并成更大的块。
-
->	代码方面，由于default_pmm.c中的代码框架较为完整，所以我并没有对其进行大的改动，只是按照注释，将其中加入链表的函数list_add改为list_add_before，之后在default_alloc_pages函数中，加入了一句SetPageProperty(p),代码见下。由于是按照代码框架自己修改而成，故与标准答案代码有很大区别。
-
-```
-static struct Page *
-default_alloc_pages(size_t n) {
-    assert(n > 0);
-    if (n > nr_free) {
-        return NULL;
-    }
-    struct Page *page = NULL;
-    list_entry_t *le = &free_list;
-    while ((le = list_next(le)) != &free_list) {
-        struct Page *p = le2page(le, page_link);
-        if (p->property >= n) {
-            page = p;
-            break;
-        }
-    }
-    if (page != NULL) {
-        list_del(&(page->page_link));
-        if (page->property > n) {
-            struct Page *p = page + n;
-            p->property = page->property - n;
-            SetPageProperty(p);
-            list_add_before(&free_list, &(p->page_link));
-    }
-        nr_free -= n;
-        ClearPageProperty(page);
-    }
-    return page;
-}
-```
-
-
-
-2.你的first fit算法是否有进一步的改进空间？
-
->	有，比如在default_free_pages函数中，在合并相邻的空闲内存块时，框架程序用的方法是从链表头开始遍历整个链表，将释放块与相邻的空闲块合并，这种遍历整个链表的方法是极其浪费资源的。改进方法有直接以释放块的内存地址为坐标向上向下寻找最近相邻块，如其空闲则合并。
-
-##练习2
----
-1.实现寻找虚拟地址对应的页表项设计思路
-
->	大致思路是首先按照pgdir和虚拟地址找到页表对应的页目录项，然后判断是否在内存中，如不在则根据需要创建页表，并将页表的引用加1，将页表对应的页目录项置标志位，最后返回虚拟地址对应的页表项。
+>	按照注释提示，先用get_pte函数得到一个二级页表项，如果其为0则表示该页既不在物理内存中也不在虚存中，此时需要分配新物理页，并将虚拟地址与其绑定。需要注意的是要对函数的返回值进行检查，如果其为NULL要进行报错并跳转到failed标签。
 >	
 >	代码方面按照注释写出，除代码风格外，功能与标准答案基本相同。	
 2.请描述页目录项（Pag Director Entry）和页表（Page Table Entry）中每个组成部分的含义和以及对ucore而言的潜在用处
@@ -62,18 +17,41 @@ default_alloc_pages(size_t n) {
 
 
 
-##练习3
+##练习2
 ---
-1.释放某虚地址所在的页并取消对应二级页表项的映射设计思路
+1.补充完成基于FIFO的页面替换算法设计思路
 
->	首先判断是否该二级表项在内存中，如在则将其对应页的引用减1，如减至0则释放该页，最后将表项清空，并将其在tlb中的对应项置为无效。
->	
->	代码方面按照注释写出，除代码风格外，功能与标准答案基本相同。
+>	do_pgfault函数如练习1般，按照注释提示写出。对于swap_fifo.c中的代码，有许多与标准答案不同之处。在_fifo_map_swappable函数中，对于swap_in参数，我并不知道其是什么作用（注释也没有给出），但在调用时我认为是为1则执行，所以在_fifo_map_swappable函数中我也进行了判断，但是结果运行出错，当我删去时则通过，不知道是什么原因。此外，在_fifo_swap_out_victim函数中，我并没有用assert语句来检查错误情况，因为我认为经过处理后，依然能正常工作，代码如下。
 
-2.数据结构Page的全局变量（其实是一个数组）的每一项与页表中的页目录项和页表项有无对应关系？如果有，其对应关系是啥？
+```
+static int
+_fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
+{
+     list_entry_t *head=(list_entry_t*) mm->sm_priv;
+         assert(head != NULL);
+     assert(in_tick==0);
+     struct Page *p = le2page(head->prev, pra_page_link);
+     if(head != head->prev){
+        list_del(head->prev);
+     }
+     *ptr_page = p;
+     return 0;
+}
+```
 
->	有。页目录项记录的二级页表就在Page的全局变量中，而二级页表项记录的物理页帧也在Page的全局变量中，所以存在对应关系。
 
-3.如果希望虚拟地址与物理地址相等，则需要如何修改lab2，完成此事？ 鼓励通过编程来具体完成这个问题
+2.如果要在ucore上实现"extended clock页替换算法"请给你的设计方案，现有的swap_manager框架是否足以支持在ucore中实现此算法？如果是，请给你的设计方案。如果不是，请给出你的新的扩展和基此扩展的设计方案。并需要回答如下问题：
 
->	减去 KERNBASE = 0xC0000000 即可。
+>	可以。
+
+2.1需要被换出的页的特征是什么？
+
+>	最近未被访问和修改的页。
+
+2.2在ucore中如何判断具有这样特征的页？
+
+>	查找使用位和修改位都为0的页。
+
+2.3何时进行换入和换出操作？
+
+>	缺页时寻找最近未被访问和修改的页进行换入换出操作。
