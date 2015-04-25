@@ -109,7 +109,7 @@ alloc_proc(void) {
         proc->need_resched = 0;
         proc->parent = NULL;
         proc->mm = NULL;
-        memset(&(proc->context), 0, sizeof(struct context));
+        memset(&(proc->context), 0, sizeof(proc->context));
         proc->tf = NULL;
         proc->cr3 = boot_cr3;
         proc->flags = 0;
