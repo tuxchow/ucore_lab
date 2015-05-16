@@ -42,6 +42,11 @@ sched_class_proc_tick(struct proc_struct *proc) {
 
 static struct run_queue __rq;
 
+void _sched_class_proc_tick(struct proc_struct *proc) {
+    sched_class_proc_tick(proc);
+}
+
+
 void
 sched_init(void) {
     list_init(&timer_list);
